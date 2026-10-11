@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>路由器局域网测速</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07111d; --panel:#0e2033; --line:#24405b; --text:#edf7ff; --muted:#93abc0; --blue:#34b3ff; --green:#42e39b; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; background:radial-gradient(circle at 50% 0,#123558 0,#07111d 55%); color:var(--text) }
+    main { width:min(760px,calc(100% - 28px)); padding:30px; border:1px solid var(--line); border-radius:24px; background:rgba(14,32,51,.92); box-shadow:0 24px 70px #0008 }
+    h1 { margin:0 0 5px; font-size:clamp(25px,5vw,38px) }
+    .sub { margin:0 0 26px; color:var(--muted) }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px }
+    .card { padding:20px 12px; text-align:center; border:1px solid var(--line); border-radius:18px; background:#091827 }
+    .label { color:var(--muted); font-size:14px }
+    .value { margin-top:7px; font-size:clamp(25px,6vw,40px); font-variant-numeric:tabular-nums; font-weight:750 }
+    .unit { color:var(--muted); font-size:13px }
+    button { width:100%; margin-top:22px; padding:15px; border:0; border-radius:14px; font-size:17px; font-weight:700; color:#03101a; background:linear-gradient(90deg,var(--blue),var(--green)); cursor:pointer }
+    button:disabled { opacity:.55; cursor:wait }
+    #status { height:25px; margin:16px 0 0; text-align:center; color:var(--muted) }
+    .note { margin:17px 0 0; padding-top:15px; border-top:1px solid var(--line); color:var(--muted); font-size:13px }
+    @media(max-width:560px){ main{padding:22px 15px}.grid{grid-template-columns:1fr}.card{padding:13px}.value{margin-top:2px} }
+  </style>
+</head>
+<body>
+<main>
+  <h1>局域网 Wi‑Fi 测速</h1>
+  <p class="sub">仅测试当前设备与路由器之间的连接，不使用互联网流量。</p>
+  <section class="grid">
+    <div class="card"><div class="label">延迟</div><div class="value" id="ping">—</div><div class="unit">ms</div></div>
+    <div class="card"><div class="label">下载</div><div class="value" id="down">—</div><div class="unit">Mbps</div></div>
+    <div class="card"><div class="label">上传</div><div class="value" id="up">—</div><div class="unit">Mbps</div></div>
+  </section>
+  <button id="start">开始测速</button>
+  <div id="status">准备就绪</div>
+  <p class="note">测试约20秒。测速时请靠近路由器并关闭其他占用网络的应用。浏览器结果通常略低于 iPerf。</p>
+</main>
+<script>
+const $=id=>document.getElementById(id), base='/cgi-bin/';
+const fmt=n=>Number.isFinite(n)?n.toFixed(n>=100?0:1):'—';
+async function latency(){
+  let values=[];
+  for(let i=0;i<8;i++){
+    const t=performance.now();
+    await fetch(base+'speed-ping?r='+Math.random(),{cache:'no-store'});
+    values.push(performance.now()-t);
+  }
+  values.sort((a,b)=>a-b); return values[Math.floor(values.length/2)];
+}
+async function download(seconds=8){
+  const until=performance.now()+seconds*1000; let bytes=0, started=performance.now();
+  while(performance.now()<until){
+    const res=await fetch(base+'speed-download?r='+Math.random(),{cache:'no-store'});
+    const reader=res.body.getReader();
+    while(true){ const x=await reader.read(); if(x.done)break; bytes+=x.value.byteLength; }
+  }
+  return bytes*8/(performance.now()-started)/1000;
+}
+async function upload(seconds=8){
+  const block=new Uint8Array(8*1024*1024); crypto.getRandomValues(block.subarray(0,65536));
+  const until=performance.now()+seconds*1000; let bytes=0, started=performance.now();
+  while(performance.now()<until){
+    await fetch(base+'speed-upload?r='+Math.random(),{method:'POST',body:block,cache:'no-store'}); bytes+=block.byteLength;
+  }
+  return bytes*8/(performance.now()-started)/1000;
+}
+$('start').onclick=async()=>{
+  const b=$('start'); b.disabled=true; $('ping').textContent=$('down').textContent=$('up').textContent='—';
+  try{
+    $('status').textContent='正在测试延迟…'; $('ping').textContent=fmt(await latency());
+    $('status').textContent='正在测试下载…'; $('down').textContent=fmt(await download());
+    $('status').textContent='正在测试上传…'; $('up').textContent=fmt(await upload());
+    $('status').textContent='测速完成';
+  }catch(e){ $('status').textContent='测速失败：'+e.message; }
+  finally{ b.disabled=false; }
+};
+</script>
+</body>
+</html>
